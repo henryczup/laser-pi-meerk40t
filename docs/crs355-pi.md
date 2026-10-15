@@ -14,7 +14,7 @@ The previous private setup repository is retained as `laser-pi-meerk40t-legacy`.
 - Explicit external correction-file SHA256 and separate X/Y scales are required.
   The profile checks the 200 mm field, UV source and simulation mode.
 - Mock responses are deterministic only for this profile.
-- General live output and red-light framing remain blocked. The bounded square
+- General live output and integrated GUI framing remain blocked. The bounded square
   runner is separate and retains identity checks, fixed artwork/calibration
   hashes, a deadline, exclusive run records and stop/disable cleanup.
 - `python -m meerk40t.camera.pi_preview` runs the CSI preview on localhost:8080.
@@ -78,6 +78,32 @@ or as an installation check. Never automatically retry after an uncertain result
 
 No physical test, active service switch or removal is performed merely by
 installing or testing this fork.
+
+## Bounded external-pointer framing
+
+`python -m meerk40t.balormk.crs355_frame --data-dir /path/to/reference`
+validates the rectangle and correction offline. The default rectangle is
+101 x 120 mm at (49.5, 40) in a 200 mm field, for Vivaldi section alignment.
+`--execute-red-frame --seconds 60` explicitly runs scanner-only positioning
+for at most 60 seconds, plus bounded USB command latency. Keep UV emission
+physically disabled and enable the independent red pointer beforehand.
+
+The command allowlist excludes EnableLaser, LaserSignalOn, GPIO writes,
+ExecuteList and every list/mark opcode. It uses direct GotoXY moves after
+DisableLaser/LaserSignalOff and correction upload, with identity checks and
+an exclusive framing lock. Stop/disable/signal-off cleanup runs on trace exit
+or error. It does not alter the active station service or general live guard.
+No retries follow a transport failure. A physically controlled red pointer may
+remain lit and stationary afterward; use its normal switch to turn it off.
+
+This is a moving boundary trace, not an optically calibrated rectangle yet.
+The saved red-dot scale differs from the marking transform; this diagnostic
+uses marking coordinates and does not guess how to apply that optical offset.
+Measure the projected bounds and verify red/UV alignment before fabrication.
+Do not align a full 202 mm board as though this were its full outline.
+
+`python -m unittest test.test_crs355_frame -v` tests the opcode allowlist,
+geometry bounds, duration limit and error cleanup without accessing hardware.
 
 ## Verification recorded October 15, 2026
 
