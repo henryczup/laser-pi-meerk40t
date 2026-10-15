@@ -1,3 +1,8 @@
+> **Henry's Raspberry Pi / CRS-355-5 fork** — based on MeerK40t 0.9.9100.
+> See [station changes and migration](docs/crs355-pi.md). The fork is staged
+> alongside the existing Pi installation; physical acceptance and cutover are pending.
+> Private calibration and run history stay outside this public repository.
+
 # Welcome to MeerK40t!
 MeerK40t (pronounced MeerKat) is a built-from-the-ground-up MIT licensed open-source laser cutting software.
 

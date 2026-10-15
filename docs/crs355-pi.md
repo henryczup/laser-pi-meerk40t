@@ -78,3 +78,16 @@ or as an installation check. Never automatically retry after an uncertain result
 
 No physical test, active service switch or removal is performed merely by
 installing or testing this fork.
+
+## Verification recorded October 15, 2026
+
+Source commit `a1dba7d71` passed 11 CRS/stock-galvo tests on Windows and
+Raspberry Pi 4. Private capture comparison passed all 4225 correction entries,
+18 grid endpoints, initialization and eight source/timing command words.
+The bounded square runner passed offline validation on both systems.
+
+The Pi candidate is `/home/henry/meerk40t-candidates/a1dba7d71`, installed in
+`/home/henry/.venvs/meerk40t-fork-candidate`. Test log:
+`/home/henry/meerk40t-fork-tests.log`. Active environment remains
+`/home/henry/.venvs/meerk40t`; the active camera service still uses the old
+preview script. No physical job was run during fork development.
