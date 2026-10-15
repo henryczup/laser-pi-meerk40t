@@ -57,9 +57,8 @@ marker=BASE/('fill-'+args.run_id+'.started')
 # An interrupted command must never be automatically repeated.
 with marker.open('x') as f:f.write(datetime.datetime.now(datetime.timezone.utc).isoformat())
 log=logfile.open('x')
-def event(name,**data):
- row={'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'event':name,**data}
- log.write(json.dumps(row)+'\n');log.flush();print(json.dumps(row),flush=True)
+from meerk40t.balormk.runlog import RunLog
+event=RunLog(log)
 d=None;initialized=False;execute_sent=False;complete=False
 deadline=time.monotonic()+1800
 def cmd(op,*args,read=True,cleanup=False):

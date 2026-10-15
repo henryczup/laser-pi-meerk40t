@@ -122,6 +122,14 @@ is still pending. Keep UV disabled until the operator explicitly confirms curren
 marking readiness. The selected PCB coating recipe has not been verified by a
 paint-clearance trial.
 
+Run events are written and flushed to the private JSONL file before optional
+console mirroring. A closed console/SSH output pipe disables that mirror without
+changing controller completion or skipping cleanup; disk-log errors still
+propagate. Use a Pi-local service with file output for unattended-by-SSH job
+execution: resilient logging alone does not protect a process from SSH session
+signals or loss of Pi power. Existing logs from the broken-pipe incident are
+preserved, not rewritten as successful runs.
+
 ## Verification recorded October 15, 2026
 
 Source commit `a1dba7d71` passed 11 CRS/stock-galvo tests on Windows and
