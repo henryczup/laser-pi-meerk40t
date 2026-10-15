@@ -54,6 +54,35 @@ def rectangle(x, y, width, height, scale_x, scale_y, step_mm=2):
     return points
 
 
+def outline_points(paths, bounds, scale_x, scale_y):
+    """Validate external mm polylines and sample them without source commands."""
+    x,y,w,h = bounds
+    result = []
+    if not isinstance(paths, list) or not 1 <= len(paths) <= 20:
+        raise ValueError('Expected 1–20 outline paths')
+    for path in paths:
+        if not isinstance(path, list) or not 2 <= len(path) <= 2000:
+            raise ValueError('Invalid outline path length')
+        for point in path:
+            if len(point) != 2 or not all(isinstance(v,(int,float)) and math.isfinite(v) for v in point):
+                raise ValueError('Invalid outline point')
+            if not (x <= point[0] <= x+w and y <= point[1] <= y+h):
+                raise ValueError('Outline outside frame')
+        samples = []
+        for a,b in zip(path,path[1:]):
+            count = max(1, math.ceil(math.dist(a,b)/5))
+            samples.extend((a[0]+(b[0]-a[0])*i/count,a[1]+(b[1]-a[1])*i/count)
+                           for i in range(count))
+        samples.append(path[-1])
+        for px,py in samples:
+            native = (round(32768+(py-100)*65535/200*scale_y),
+                      round(32768+(px-100)*65535/200*scale_x))
+            if not all(0 <= v <= 65535 for v in native):
+                raise ValueError('Outline native point out of range')
+            result.append(native)
+    return result
+
+
 def trace(send, points, seconds, clock=time.monotonic, sleep=time.sleep, interval=0.005):
     if not math.isfinite(interval) or not 0 <= interval <= 0.02:
         raise ValueError('Interval must be between zero and 20ms')
@@ -94,6 +123,7 @@ def main():
     parser.add_argument('--fast', action='store_true',
                         help='5mm steps without intentional delay for faster red refresh')
     parser.add_argument('--execute-red-frame', action='store_true')
+    parser.add_argument('--outline-json', type=Path, help='Additional paths in field millimeters')
     args = parser.parse_args()
     if not math.isfinite(args.seconds) or not 0 < args.seconds <= 60:
         parser.error('seconds must be greater than zero and at most 60')
@@ -103,6 +133,10 @@ def main():
         raise ValueError('This runner requires an independently enabled pointer')
     points = rectangle(*args.rect, cfg['Galvo_2_Scale'], cfg['Galvo_1_Scale'],
                        step_mm=5 if args.fast else 2)
+    if args.outline_json:
+        points.append(points[0])
+        points.extend(outline_points(json.loads(args.outline_json.read_text())['paths'],
+                                     args.rect, cfg['Galvo_2_Scale'], cfg['Galvo_1_Scale']))
     cor = base/'Henry-UV-200mm-nonlinear-only.cor'
     if hashlib.sha256(cor.read_bytes()).hexdigest() != COR_HASH:
         raise ValueError('Correction file hash mismatch')

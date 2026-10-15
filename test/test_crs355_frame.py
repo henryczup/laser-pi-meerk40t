@@ -4,6 +4,13 @@ from meerk40t.balormk.crs355_frame import packet, rectangle, trace
 
 
 class TestFrame(unittest.TestCase):
+    def test_outline_is_bounded(self):
+        from meerk40t.balormk.crs355_frame import outline_points
+        self.assertTrue(outline_points([[[50,50],[100,100],[50,50]]], [49.5,40,101,120],1,1))
+        for paths in ([[[0,0],[100,100]]], [[[50,50],[float('nan'),60]]], []):
+            with self.assertRaises(ValueError):
+                outline_points(paths,[49.5,40,101,120],1,1)
+
     def test_forbids_every_unlisted_opcode(self):
         from meerk40t.balormk.crs355_frame import ALLOWED
         for op in range(65536):
