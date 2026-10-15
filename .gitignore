@@ -145,3 +145,11 @@ local_workspace/
 # VS Code settings
 .vscode/
 release_preview.md
+# Private station data must never enter this public fork.
+controller-identity.json
+*.cor
+*.started
+commissioning-*.jsonl
+*.pem
+*.key
+

@@ -144,6 +144,10 @@ class MockConnection:
         self._implied_response[: len(data)] = data[:8]
 
     def read(self, index=0):
+        if getattr(self.parent_device, "crs355_profile", False):
+            if not self.devices.get(index):
+                raise ConnectionError
+            return struct.pack("<4H", 0, 0, 0, 0x20)
         if self._implied_response is None:
             read = bytearray(8)
             for r in range(len(read)):

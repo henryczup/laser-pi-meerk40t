@@ -63,7 +63,11 @@ class BalorDriver:
         self.native_y = 0x8000
         self.name = str(self.service)
 
-        self.connection = GalvoController(service, force_mock=force_mock)
+        controller_type = GalvoController
+        if getattr(service, "crs355_profile", False):
+            from meerk40t.balormk.crs355 import CRS355Controller
+            controller_type = CRS355Controller
+        self.connection = controller_type(service, force_mock=force_mock)
 
         self.service.add_service_delegate(self.connection)
         self.paused = False

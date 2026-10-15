@@ -23,6 +23,10 @@ class BalorDevice(Service, Status):
     def __init__(self, kernel, path, *args, choices=None, **kwargs):
         Service.__init__(self, kernel, path)
         Status.__init__(self)
+        self.setting(bool, "crs355_profile", False)
+        self.setting(float, "crs355_scale_x", 0.0)
+        self.setting(float, "crs355_scale_y", 0.0)
+        self.setting(str, "crs355_cor_sha256", "")
         self.name = "balor"
         self.extension = "lmc"
         self.job = None
@@ -1157,6 +1161,13 @@ class BalorDevice(Service, Status):
             self.view.rotate_cw()
         if self.rotate >= 270:
             self.view.rotate_cw()
+        if self.crs355_profile:
+            from meerk40t.balormk.crs355 import calibrated_view
+            if not self.mock or self.source != "uv":
+                raise ValueError("CRS profile requires source=uv and mock=True.")
+            if abs(unit_size - float(Length("200mm"))) > 1e-6:
+                raise ValueError("CRS recipe is validated only for the 200mm field.")
+            calibrated_view(self.view, self.crs355_scale_x, self.crs355_scale_y)
         self.signal("view;realized")
 
     @property
