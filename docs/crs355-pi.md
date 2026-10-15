@@ -105,6 +105,23 @@ Do not align a full 202 mm board as though this were its full outline.
 `python -m unittest test.test_crs355_frame -v` tests the opcode allowlist,
 geometry bounds, duration limit and error cleanup without accessing hardware.
 
+## Reviewed fill jobs
+
+`crs355_fill` accepts external command text with an explicit SHA256, enforcing
+the captured source prefix and independent jump/mark stroke sequence. By default
+it only validates. Execution requires `--execute-approved-fill` and a unique
+`--run-id`, uses the existing identity and correction, and preserves exclusive
+run records. It shares the framing lock. General application live output is
+still blocked.
+
+`crs355_stream` splits into 256-command packets and follows upstream's three
+packet prefill before a single ExecuteList. Tests cover packet preservation,
+single execution, ambiguous errors without retries, timeout and cleanup.
+This streaming path passed offline tests on Windows and Pi; physical acceptance
+is still pending. Keep UV disabled until the operator explicitly confirms current
+marking readiness. The selected PCB coating recipe has not been verified by a
+paint-clearance trial.
+
 ## Verification recorded October 15, 2026
 
 Source commit `a1dba7d71` passed 11 CRS/stock-galvo tests on Windows and
