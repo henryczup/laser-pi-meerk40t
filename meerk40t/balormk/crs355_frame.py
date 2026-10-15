@@ -29,7 +29,9 @@ def packet(op, *args):
     return struct.pack('<6H', op, *args, *([0] * (5-len(args))))
 
 
-def rectangle(x, y, width, height, scale_x, scale_y):
+def rectangle(x, y, width, height, scale_x, scale_y, step_mm=2):
+    if not math.isfinite(step_mm) or not 0.5 <= step_mm <= 10:
+        raise ValueError('Step must be between 0.5 and 10mm')
     values = (x, y, width, height, scale_x, scale_y)
     if not all(math.isfinite(v) for v in values):
         raise ValueError('Non-finite framing geometry')
@@ -40,7 +42,7 @@ def rectangle(x, y, width, height, scale_x, scale_y):
     corners = [(x,y), (x+width,y), (x+width,y+height), (x,y+height), (x,y)]
     points = []
     for a, b in zip(corners, corners[1:]):
-        count = math.ceil(math.dist(a,b)/2)
+        count = math.ceil(math.dist(a,b)/step_mm)
         for i in range(count):
             px = a[0]+(b[0]-a[0])*i/count
             py = a[1]+(b[1]-a[1])*i/count
@@ -52,7 +54,9 @@ def rectangle(x, y, width, height, scale_x, scale_y):
     return points
 
 
-def trace(send, points, seconds, clock=time.monotonic, sleep=time.sleep):
+def trace(send, points, seconds, clock=time.monotonic, sleep=time.sleep, interval=0.005):
+    if not math.isfinite(interval) or not 0 <= interval <= 0.02:
+        raise ValueError('Interval must be between zero and 20ms')
     if not math.isfinite(seconds) or not 0 < seconds <= 60:
         raise ValueError('Frame duration must be 0–60 seconds')
     deadline = clock()+seconds
@@ -69,7 +73,7 @@ def trace(send, points, seconds, clock=time.monotonic, sleep=time.sleep):
                 distance = min(65535, round(math.dist(previous, (x,y))))
                 send(13, x, y, 0, distance)
                 previous = (x,y)
-                sleep(0.005)
+                sleep(interval)
     finally:
         errors = []
         for op in (31, 2, 14):
@@ -87,6 +91,8 @@ def main():
     parser.add_argument('--rect', nargs=4, type=float, default=[49.5,40,101,120],
                         metavar=('X','Y','WIDTH','HEIGHT'))
     parser.add_argument('--seconds', type=float, default=30)
+    parser.add_argument('--fast', action='store_true',
+                        help='5mm steps without intentional delay for faster red refresh')
     parser.add_argument('--execute-red-frame', action='store_true')
     args = parser.parse_args()
     if not math.isfinite(args.seconds) or not 0 < args.seconds <= 60:
@@ -95,7 +101,8 @@ def main():
     cfg = json.loads((base/'current-lightburn-JCZFiber.json').read_text())['Settings']
     if cfg['RedLightPortBit'] != -1:
         raise ValueError('This runner requires an independently enabled pointer')
-    points = rectangle(*args.rect, cfg['Galvo_2_Scale'], cfg['Galvo_1_Scale'])
+    points = rectangle(*args.rect, cfg['Galvo_2_Scale'], cfg['Galvo_1_Scale'],
+                       step_mm=5 if args.fast else 2)
     cor = base/'Henry-UV-200mm-nonlinear-only.cor'
     if hashlib.sha256(cor.read_bytes()).hexdigest() != COR_HASH:
         raise ValueError('Correction file hash mismatch')
@@ -136,7 +143,7 @@ def main():
             for index,(x,y) in enumerate(table):
                 send(16,x,y,int(index!=0),read=False)
             print('RED FRAME STARTED: UV disabled; scanner-only moves',flush=True)
-            trace(send,points,args.seconds)
+            trace(send,points,args.seconds,interval=0 if args.fast else 0.005)
             print('RED FRAME STOPPED: stop/disable/signal-off acknowledged',flush=True)
         finally:
             usb.util.dispose_resources(dev)
