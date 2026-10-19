@@ -80,6 +80,16 @@ class Station:
             log_text = self.log_path.read_text(errors='replace')
             if self.kind == 'cut' and code == 0 and '"controller_completion_seen": true' in log_text and 'cleanup_error' not in log_text:
                 self.message = 'Prepared job finished; controller completion recorded. Inspect the result.'
+                # Notifications are optional and cannot affect job execution/retry.
+                try:
+                    try:
+                        from meerk40t.camera.completion_email import queue
+                    except ImportError:
+                        from completion_email import queue
+                    queue(self.config.get('completion_email'), self.log_path,
+                          self.config.get('cut_job', {}).get('label', 'Prepared job'))
+                except Exception:
+                    pass
             elif self.kind == 'frame' and code == 0 and 'RED FRAME STOPPED' in log_text:
                 self.message = 'Frame finished; cleanup acknowledged'
             else:
@@ -407,7 +417,17 @@ def main():
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
     server.station = Station(json.loads(Path(args.config).read_text()), args.enable_red_framing)
     server.token = secrets.token_urlsafe(32)
-    server.serve_forever()
+    stop = threading.Event()
+    if server.station.config.get('completion_email', {}).get('enabled'):
+        try:
+            from meerk40t.camera.completion_email import watch
+        except ImportError:
+            from completion_email import watch
+        threading.Thread(target=watch, args=(server.station, stop), daemon=True).start()
+    try:
+        server.serve_forever()
+    finally:
+        stop.set()
 
 
 if __name__ == '__main__':

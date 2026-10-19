@@ -3,6 +3,9 @@
 For the operator workflow and example chat instructions, see
 [Using Codex with the live station page](codex-ui-workflow.md).
 
+Optional [completion email](completion-email.md) runs on the Pi without requiring
+an open browser. It requires private SMTP setup and is disabled by default.
+
 Operator update (October 18): the SVG drop area was removed at the operator's request.
 The upload API remains available for preparation tools. The page has Start cutting,
 Pause, Continue beside Frame and Stop. The compact current job summary identifies
