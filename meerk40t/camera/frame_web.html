@@ -1,0 +1,48 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laser Pi · Frame positioning</title>
+<style>
+body{margin:0;background:#111820;color:#e8eef4;font:16px system-ui}header{padding:18px 24px;border-bottom:1px solid #344150}h1{font-size:23px;margin:0 0 5px}main{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:20px;padding:20px}#view{width:100%;display:block}aside{background:#1d2732;padding:20px;border-radius:12px}input{width:110px;padding:7px;background:#111820;color:white;border:1px solid #647589;border-radius:5px}button,select{font:inherit;padding:12px;border-radius:7px;border:1px solid #647589;background:#304154;color:white;cursor:pointer}button:disabled{opacity:.4;cursor:default}.row{display:flex;gap:8px;margin:12px 0}.row>*{flex:1}#stop{background:#922d38}#frame{background:#176f61}#status{white-space:pre-wrap;overflow-wrap:anywhere;min-height:70px}small{color:#bdcad5}label{display:block;margin:15px 0}output{font:22px monospace}#cameraStatus{padding:10px;background:#1d2732}@media(max-width:850px){main{grid-template-columns:1fr}}
+#drop{display:block;border:2px dashed #647589;padding:18px;text-align:center;border-radius:8px;margin-bottom:16px;cursor:pointer}#drop.over{border-color:#4ee1ba;background:#233e40}#svgFile{width:100%;box-sizing:border-box;margin-top:10px}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0}#start{background:#176f61}#jobInfo,#uploadStatus,#pauseStatus{overflow-wrap:anywhere;font-size:14px}#pauseStatus{color:#efcf89}</style>
+<header><h1>Frame positioning</h1></header>
+<main><section><img id="view" alt="Live Pi camera"><div id="cameraStatus">Connecting to camera…</div></section><aside>
+<label id="drop" for="svgFile">Drop an SVG here or choose a file<input id="svgFile" type="file" accept=".svg,image/svg+xml"></label><div id="uploadStatus" role="status"></div>
+<section id="layers" style="margin-bottom:24px" aria-label="Cut layer progress">
+<h2 style="font-size:20px;margin:0 0 10px">Cut layers</h2>
+<div id="layerSummary">Connecting to progress monitor…</div>
+<div id="layerCards"></div><small id="layerFreshness"></small>
+</section><p>Position</p><output id="offset">—</output>
+<label>Step <select id="step"><option value="0.1">0.1 mm</option><option value="1" selected>1 mm</option><option value="10">10 mm</option></select></label>
+<div class="row"><button class="nudge" data-axis="x" data-sign="-1">−X</button><button class="nudge" data-axis="x" data-sign="1">+X</button></div>
+<div class="row"><button class="nudge" data-axis="y" data-sign="-1">−Y</button><button class="nudge" data-axis="y" data-sign="1">+Y</button></div>
+
+
+<div id="jobInfo"></div><div class="controls"><button id="frame">Frame</button><button id="start">Start cutting</button><button id="pause">Pause</button><button id="continue">Continue</button><button id="stop">Stop</button></div><div id="pauseStatus">Pause takes effect after the current layer.</div>
+<button id="save">Save candidate</button><p id="status" role="status">Connecting…</p>
+
+</aside></main>
+<script>
+const token='__TOKEN__';let state=null,pending=false;
+const el=id=>document.getElementById(id);
+function render(s){state=s;el('offset').textContent=`X ${s.dx.toFixed(2)} · Y ${s.dy.toFixed(2)} mm`;el('jobInfo').textContent=s.cut?.label ? s.cut.label+' · '+s.cut.summary : 'No prepared cutting job';el('uploadStatus').textContent=s.upload ? s.upload.name+' — saved; toolpath preparation needed' : '';el('pauseStatus').textContent=s.layer_control?.phase==='paused'?'Paused between layers':s.layer_control?.pause_requested?'Pause requested — finishing current layer':'Pause takes effect after the current layer.';el('status').textContent=s.message==='Ready to adjust candidate; no frame started'?'Ready':s.message;buttons();}
+function buttons(){let blocked=!state||state.running||state.failed||pending;document.querySelectorAll('.nudge').forEach(b=>b.disabled=blocked);el('save').disabled=blocked;el('frame').disabled=blocked||!state?.enabled||!!state?.upload;el('stop').disabled=!state?.running;el('svgFile').disabled=blocked;el('start').disabled=blocked||!state?.cut?.available;el('start').title=state?.cut?.reason||'Start the prepared job shown above';const lc=state?.layer_control;el('pause').disabled=pending||!lc?.supported||lc?.pause_requested;el('continue').disabled=pending||!lc?.supported||!lc?.pause_requested;}
+async function action(body){if(pending&&body.action!=='stop')return;pending=true;buttons();try{const r=await fetch('/action',{method:'POST',headers:{'Content-Type':'application/json','X-Frame-Token':token},body:JSON.stringify(body)});const s=await r.json();if(!r.ok)throw Error(s.error);render(s);}catch(e){el('status').textContent=e.message;}finally{pending=false;buttons();}}
+document.querySelectorAll('.nudge').forEach(b=>b.onclick=()=>action({action:'nudge',axis:b.dataset.axis,amount:Number(el('step').value)*Number(b.dataset.sign)}));
+el('start').onclick=()=>action({action:'cut',confirm_job_sha256:state?.cut?.sha256});el('pause').onclick=()=>action({action:'pause'});el('continue').onclick=()=>action({action:'continue'});
+async function upload(file){if(!file||pending||!state||state.running||state.failed)return;if(file.size>1024*1024){el('uploadStatus').textContent='SVG must be under 1 MB';return;}await action({action:'upload_svg',name:file.name,svg:await file.text()});el('svgFile').value='';}
+el('svgFile').onchange=e=>upload(e.target.files[0]);el('drop').ondragover=e=>{e.preventDefault();el('drop').classList.add('over');};el('drop').ondragleave=()=>el('drop').classList.remove('over');el('drop').ondrop=e=>{e.preventDefault();el('drop').classList.remove('over');if(e.dataTransfer.files.length!==1){el('uploadStatus').textContent='Drop one SVG at a time';return;}upload(e.dataTransfer.files[0]);};
+el('frame').onclick=()=>action({action:'frame'});el('stop').onclick=()=>action({action:'stop'});el('save').onclick=()=>action({action:'save'});
+async function poll(){try{const r=await fetch('/status');if(!r.ok)throw Error('Station unavailable');if(!pending)render(await r.json());}catch(e){state=null;buttons();el('status').textContent='Disconnected — controls disabled';}setTimeout(poll,1000);}poll();
+const progressEndpoint='/progress';
+async function pollLayers(){try{
+ const r=await fetch(progressEndpoint);if(!r.ok)throw Error('Unavailable');const p=await r.json();
+ el('layerSummary').textContent=p.complete?'All layers completed':p.current?`Layer ${p.current.layer} of ${p.total} · Card ${p.current.card}`:'Preparing first layer';
+ el('layerCards').replaceChildren();
+ for(const c of p.cards){const row=document.createElement('div');row.style.margin='12px 0';
+ const label=document.createElement('div');label.textContent=`Card ${c.card}: ${c.completed} / ${p.total} layers completed`;
+ const bar=document.createElement('progress');bar.max=p.total;bar.value=c.completed;bar.style.width='100%';
+ row.append(label,bar);el('layerCards').append(row);}
+ el('layerFreshness').textContent='Updated '+new Date().toLocaleTimeString();
+}catch(e){el('layerFreshness').textContent='Progress unavailable — previous counts may be stale';}
+setTimeout(pollLayers,2000);}pollLayers();
+const view=el('view');function refresh(){view.src='/snapshot.jpg?t='+Date.now();}view.onload=()=>{el('cameraStatus').textContent='Image received '+new Date().toLocaleTimeString();setTimeout(refresh,500);};view.onerror=()=>{el('cameraStatus').textContent='Camera unavailable — displayed image may be stale';setTimeout(refresh,2000);};refresh();
+</script></html>

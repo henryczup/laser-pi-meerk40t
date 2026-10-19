@@ -11,6 +11,8 @@ parser.add_argument("--data-dir", type=Path, required=True,
                     help="Existing station reference directory, preserving identity and run history")
 parser.add_argument("--job", type=Path, required=True)
 parser.add_argument("--job-sha256", required=True)
+parser.add_argument("--mark-speed", type=int, choices=(500,1000,2000,4000), default=500,
+                    help="Explicit recipe selection; 1000 is a faster experimental witness pass")
 parser.add_argument("--run-id", help="Unique record name; existing records must never be removed")
 parser.add_argument("--execute-approved-fill", action="store_true")
 args = parser.parse_args()
@@ -30,6 +32,8 @@ expected_prefix=[(0x8051,0,0,0,0,0),(0x800a,83,0,0,0,0),
  (0x801e,17,17,0,0,0),(0x800b,20,0,0,0,0),(0x8006,1508,0,0,0,0),
  (0x800c,188,0,0,0,0),(0x8007,100,0,0,0,0),(0x8008,100,0,0,0,0),
  (0x800f,10,0,0,0,0)]
+if args.mark_speed in (1000,2000,4000):
+ expected_prefix[5]=(0x800c,{1000:377,2000:754,4000:1508}[args.mark_speed],0,0,0,0)
 if commands[:9]!=expected_prefix:raise ValueError('Recipe prefix mismatch')
 if commands[-2:]!=[(0x8004,10,0,0,0,0),(0x8002,0,0,0,0,0)]:raise ValueError('Invalid ending')
 body=commands[9:-2]
@@ -77,12 +81,10 @@ try:
  d=usb.core.find(idVendor=0x9588,idProduct=0x9899)
  if d is None:raise RuntimeError('Controller missing')
  usb.util.claim_interface(d,0)
- version=cmd(7);serial=cmd(9)
  identity=json.loads((BASE/'controller-identity.json').read_text())
- assert list(version[:3])==identity['queries']['version']['words'][:3],'Controller version mismatch'
- assert list(serial[:3])==identity['queries']['serial']['words'][:3],'Controller identity mismatch'
- if version[3]&4:raise RuntimeError('Controller busy: test not started')
- event('identity_verified',status=version[3])
+ from meerk40t.balormk.crs355_identity import identify
+ version,serial,drained=identify(d,cmd,identity['queries'],usb.core.USBTimeoutError)
+ event('identity_verified',status=version[3],queued_replies_discarded=drained)
  initialized=True
  cmd(3);cmd(0x15,1)
  for i,(x,y) in enumerate(table):cmd(0x10,x,y,0 if i==0 else 1,read=False)
@@ -90,7 +92,7 @@ try:
  for c in INITIALIZE_AFTER_COR:cmd(*c)
  cmd(0x12);cmd(0x21,0)
  wait_idle()
- event('fill_validated',mark_segments=mark_count,job_sha256=args.job_sha256)
+ event('fill_validated',mark_segments=mark_count,job_sha256=args.job_sha256,mark_speed_mm_s=args.mark_speed)
  # May execute during streaming; never retry an ambiguous transport failure.
  execute_sent=True
  stream(blocks,cmd,lambda block:d.write(2,block,timeout=1000),event,timeout=1700)

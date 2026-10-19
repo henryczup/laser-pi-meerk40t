@@ -81,6 +81,17 @@ installing or testing this fork.
 
 ## Bounded external-pointer framing
 
+The standalone fill and frame runners synchronize the USB input queue before
+identity queries while holding the exclusive hardware lock. At most eight reads
+with 100 ms timeouts are attempted; a queue that does not empty or any non-timeout
+I/O error aborts. Version and serial must then match the saved identity twice,
+with no busy flag. This handles a stale queued reply without weakening identity
+checks or retrying an execution. It is never used during command streaming.
+The October 16 diagnosis found one queued serial reply; after draining it both
+identity pairs matched. The updated helper was verified on the Pi using only
+identity queries, without source initialization or firing. Historical failed-run
+records remain unchanged.
+
 `python -m meerk40t.balormk.crs355_frame --data-dir /path/to/reference`
 validates the rectangle and correction offline. The default rectangle is
 101 x 120 mm at (49.5, 40) in a 200 mm field, for Vivaldi section alignment.

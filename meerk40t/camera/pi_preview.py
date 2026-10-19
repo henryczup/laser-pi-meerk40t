@@ -1,19 +1,53 @@
 """Private CSI camera preview; access through SSH forwarding, no laser control."""
 import io
+import json
+import math
+import time
+from pathlib import Path
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 lock = threading.Lock()
+applied_controls = None
+controls_file = Path(__file__).with_name('camera-controls.json')
+
+
+def validate_controls(values):
+    bounds = {'ExposureValue': (-8, 8), 'ExposureTime': (100, 200000),
+              'AnalogueGain': (1, 8), 'Brightness': (-1, 1), 'Contrast': (0, 4)}
+    for key, value in values.items():
+        if key == 'AeEnable':
+            if not isinstance(value, bool):
+                raise ValueError('AeEnable must be boolean')
+        elif key not in bounds or not isinstance(value, (int, float)) or not math.isfinite(value) or not bounds[key][0] <= value <= bounds[key][1]:
+            raise ValueError('Invalid camera control')
+    return values
+
+
+def apply_controls():
+    global applied_controls
+    if controls_file.exists():
+        values = validate_controls(json.loads(controls_file.read_text()))
+        if values != applied_controls:
+            camera.set_controls(values)
+            applied_controls = values
+            time.sleep(0.7)
+
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.split("?")[0] == "/snapshot.jpg":
             with lock:
+                apply_controls()
                 output = io.BytesIO()
                 camera.capture_file(output, format="jpeg")
                 body = output.getvalue()
             content_type = "image/jpeg"
+        elif self.path == '/metadata':
+            with lock:
+                body = json.dumps(camera.capture_metadata(), default=str).encode()
+            content_type = 'application/json'
         elif self.path == "/":
             body = b'''<!doctype html><title>Laser Pi camera</title>
 <style>body{background:#151515;color:white;font:18px sans-serif}img{max-width:100%;max-height:90vh}</style>

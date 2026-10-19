@@ -83,21 +83,21 @@ def outline_points(paths, bounds, scale_x, scale_y):
     return result
 
 
-def trace(send, points, seconds, clock=time.monotonic, sleep=time.sleep, interval=0.005):
+def trace(send, points, seconds, clock=time.monotonic, sleep=time.sleep, interval=0.005, should_stop=lambda: False, continuous=False):
     if not math.isfinite(interval) or not 0 <= interval <= 0.02:
         raise ValueError('Interval must be between zero and 20ms')
     if not math.isfinite(seconds) or not 0 < seconds <= 60:
         raise ValueError('Frame duration must be 0–60 seconds')
-    deadline = clock()+seconds
+    deadline = float("inf") if continuous else clock()+seconds
     previous = (32768,32768)
     try:
         send(31)  # StopExecute
         send(2)   # DisableLaser
         send(14)  # LaserSignalOff
         send(18)  # ResetList; never execute a stale marking list
-        while clock() < deadline:
+        while clock() < deadline and not should_stop():
             for x,y in points:
-                if clock() >= deadline:
+                if clock() >= deadline or should_stop():
                     break
                 distance = min(65535, round(math.dist(previous, (x,y))))
                 send(13, x, y, 0, distance)
@@ -120,6 +120,7 @@ def main():
     parser.add_argument('--rect', nargs=4, type=float, default=[49.5,40,101,120],
                         metavar=('X','Y','WIDTH','HEIGHT'))
     parser.add_argument('--seconds', type=float, default=30)
+    parser.add_argument('--until-stopped', action='store_true', help='Trace until SIGINT or SIGTERM; explicit operator mode')
     parser.add_argument('--fast', action='store_true',
                         help='5mm steps without intentional delay for faster red refresh')
     parser.add_argument('--execute-red-frame', action='store_true')
@@ -146,10 +147,17 @@ def main():
     for x,y in points:
         packet(13,x,y,0,0)
     print(json.dumps({'offline_validated': True, 'rect_mm': args.rect,
-                      'seconds': args.seconds, 'points':len(points),
+                      'seconds': None if args.until_stopped else args.seconds, 'points':len(points),
                       'red_pointer_scale_alignment': 'not physically verified'}), flush=True)
     if not args.execute_red_frame:
         return
+    import signal
+    stop_requested = False
+    def request_stop(signum, frame):
+        nonlocal stop_requested
+        stop_requested = True
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
     import fcntl
     import usb.core
     import usb.util
@@ -166,18 +174,17 @@ def main():
         try:
             usb.util.claim_interface(dev,0)
             identity = json.loads((base/'controller-identity.json').read_text())['queries']
-            version, serial = send(7), send(9)
-            if list(version[:3]) != identity['version']['words'][:3] or list(serial[:3]) != identity['serial']['words'][:3]:
-                raise RuntimeError('Controller identity mismatch')
-            if version[3]&4:
-                raise RuntimeError('Controller busy; no framing started')
+            from meerk40t.balormk.crs355_identity import identify
+            version, serial, drained = identify(dev, send, identity, usb.core.USBTimeoutError)
+            print(json.dumps({'identity_verified': True, 'queued_replies_discarded': drained}), flush=True)
             send(2)
             send(14)
             send(21,1)
             for index,(x,y) in enumerate(table):
                 send(16,x,y,int(index!=0),read=False)
             print('RED FRAME STARTED: UV disabled; scanner-only moves',flush=True)
-            trace(send,points,args.seconds,interval=0 if args.fast else 0.005)
+            trace(send,points,args.seconds,interval=0 if args.fast else 0.005,
+                  should_stop=lambda: stop_requested, continuous=args.until_stopped)
             print('RED FRAME STOPPED: stop/disable/signal-off acknowledged',flush=True)
         finally:
             usb.util.dispose_resources(dev)

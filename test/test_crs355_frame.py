@@ -39,6 +39,29 @@ class TestFrame(unittest.TestCase):
         self.assertEqual([p[0] for p in sent[-3:]],[31,2,14])
         self.assertTrue(set(p[0] for p in sent) <= {31,2,14,18,13})
 
+    def test_cooperative_stop_finishes_exchange_and_cleanup(self):
+        sent=[]
+        stopped=[False]
+        def send(op,*args):
+            sent.append(op)
+            if op == 13:
+                stopped[0]=True
+        trace(send,[(32000,32000),(33000,33000)],1,
+              should_stop=lambda:stopped[0])
+        self.assertEqual(sent.count(13),1)
+        self.assertEqual(sent[-3:],[31,2,14])
+
+    def test_continuous_ignores_deadline_but_obeys_stop(self):
+        sent=[]
+        now=[0]
+        def send(op,*args):
+            sent.append(op)
+            now[0] += 10
+        trace(send,[(32000,32000)],1,clock=lambda:now[0],sleep=lambda _:None,
+              continuous=True,should_stop=lambda:sent.count(13)>=3)
+        self.assertEqual(sent.count(13),3)
+        self.assertEqual(sent[-3:],[31,2,14])
+
     def test_failure_still_disables(self):
         sent=[]
         def send(op,*args):
