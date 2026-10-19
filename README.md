@@ -1,9 +1,85 @@
-> **Henry's Raspberry Pi / CRS-355-5 fork** — based on MeerK40t 0.9.9100.
-> See [station changes and migration](docs/crs355-pi.md). The fork is staged
-> alongside the existing Pi installation; physical acceptance and cutover are pending.
-> Private calibration and run history stay outside this public repository.
+# Laser Pi · MeerK40t
 
-# Welcome to MeerK40t!
+Henry's Raspberry Pi laser station, built on the full **MeerK40t 0.9.9100**
+source tree. This fork adds support for the CRS-355-5 UV source, a Pi camera
+page, red-pointer positioning, and prepared cutting jobs controlled through
+the web app or a Codex-assisted workflow.
+
+## Current station
+
+- Raspberry Pi 4 with a Raspberry Pi Camera V2.
+- CRS-355-5 UV source and an EZCAD2-compatible BJJCZ controller.
+- Private camera and control page available through Tailscale.
+- Source-specific initialization, external lens correction, controller identity
+  checks, and preserved job records.
+
+The station uses the fork's reviewed runners and web controls. The general CRS
+profile remains simulation-only; installing stock MeerK40t is not equivalent to
+configuring this station. Keep version **0.9.9100** until protocol behavior is
+revalidated. Historical migration notes in the detailed docs describe earlier stages.
+
+## Using the station
+
+Open the private station URL supplied by the owner while connected to Tailscale.
+Keep the page beside Codex to inspect the camera, prepare designs through chat,
+align a frame, and follow job progress.
+
+1. **Prepare:** give Codex the artwork, physical dimensions, material, face/section,
+   and intended removal areas. Review the prepared design and recipe.
+2. **Align:** inspect a fresh camera image and trace the red outline. Adjust the
+   position and frame again as needed. Frame continues until Stop.
+3. **Run:** explicitly authorize the prepared job or use Start cutting after
+   checking the job summary and coordinating with the operator at the machine.
+4. **Inspect:** check layer records and the actual result before requesting more passes.
+
+The page includes the camera, layer progress, position controls, Frame, Start
+cutting, Pause, Continue, and Stop. Pause takes effect **between completed layers**
+for supported batches. There is no SVG upload box; new artwork is prepared through
+the workflow. Changed settings or placement require a matching toolpath.
+
+All connected users share one station state and its enabled controls. Closing the
+browser does not stop a running operation. Software Stop is not the hardware
+emergency stop. The Pi must remain powered and online; the laptop need not stay
+awake for the page or an already launched Pi job to remain available.
+
+## Guides
+
+| Task | Guide |
+| --- | --- |
+| Work through chat alongside the live page | [Codex and the dynamic UI](docs/codex-ui-workflow.md) |
+| Give a friend access and explain controls | [Shared station quickstart](docs/friend-quickstart.md) |
+| Understand the web backend and job lifecycle | [Web controls](docs/frame-web.md) |
+| Inspect a fresh camera image | [Camera checks](docs/camera-check.md) |
+| Position artwork using the camera and pointer | [Camera-assisted alignment](docs/camera-frame-alignment.md) |
+| Understand the UV adapter and reviewed runners | [Station implementation](docs/crs355-pi.md) |
+| Set up an independent development environment | [Local development](docs/local-development.md) |
+
+## Development and verification
+
+Clone this fork and follow [local development](docs/local-development.md) to
+install it in its own virtual environment. The station regression suite runs
+offline; private captured fixtures provide additional calibration/protocol checks.
+Tests do not deploy, restart station services, connect to laser USB, or fire.
+
+Our station additions live in `meerk40t/balormk/crs355*.py` and
+`meerk40t/camera/`; regression tests are in `test/`. The rest of the repository
+contains the upstream MeerK40t application and drivers.
+
+Private configuration, calibration, controller identities, credentials, camera
+captures, and run history stay **outside this public repository**. Cloning the
+code does not grant machine access or configure another laser. Preserve completed
+run markers; never automatically retry after ambiguous execution.
+
+For PCB fabrication, the default process is **paint-resist removal followed by
+chemical copper etching**, retaining resist over copper that should remain.
+Software settings do not establish measured laser watts, optical pulse duration,
+or full-field dimensional accuracy.
+
+## Upstream MeerK40t
+
+The following upstream overview is retained for general background. Its generic
+installation and release advice does not replace the pinned station setup above.
+
 MeerK40t (pronounced MeerKat) is a built-from-the-ground-up MIT licensed open-source laser cutting software.
 
 The primary goals of this software is simple:
