@@ -1,6 +1,7 @@
 # Camera page with frame steering
 
-Operator update (October 18): the page has an SVG drop area and Start cutting,
+Operator update (October 18): the SVG drop area was removed at the operator's request.
+The upload API remains available for preparation tools. The page has Start cutting,
 Pause, Continue beside Frame and Stop. The compact current job summary identifies
 what Start will execute. A completed or ambiguous request remains protected by
 its durable marker; these controls never erase a marker to repeat a job.
