@@ -12,6 +12,9 @@ Do not use the owner's credentials or publish an invitation link.
 
 ## Operate together
 
+For chat-driven design preparation and the live side panel, follow
+[Using Codex with the live station page](codex-ui-workflow.md).
+
 Agree who is controlling the station before changing anything. All browsers
 share one selected design, position and running job; there are no separate
 viewer/operator accounts in the app. Arrange for an operator at the machine

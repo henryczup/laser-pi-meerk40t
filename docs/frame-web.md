@@ -1,5 +1,8 @@
 # Camera page with frame steering
 
+For the operator workflow and example chat instructions, see
+[Using Codex with the live station page](codex-ui-workflow.md).
+
 Operator update (October 18): the SVG drop area was removed at the operator's request.
 The upload API remains available for preparation tools. The page has Start cutting,
 Pause, Continue beside Frame and Stop. The compact current job summary identifies
