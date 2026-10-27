@@ -1,5 +1,6 @@
 """Local-only camera, red framing, and explicitly configured single-pass jobs."""
 import argparse
+import copy
 import hashlib
 import os
 import re
@@ -126,11 +127,90 @@ class Station:
         self.original, self.dx, self.dy = original, *shift
         self.design_id, self.draft = design_id, None
         self.upload = None
+        self.log_path = None
+        self.control_dir = None
         self.message = 'Loaded ' + design['label'] + '. Verify placement before running.'
+
+    def history_entry(self, key, design):
+        job = design.get('cut_job')
+        item = dict(id=key, label=design['label'], settings=design.get('settings', {}),
+                    summary=(job or {}).get('summary', ''), state='Prepared' if job else 'Frame only',
+                    repeatable=False, requested_at=None)
+        if not job:
+            return item
+        marker = self.cut_marker(job)
+        if not marker.exists():
+            return item
+        item['state'] = 'Needs review'
+        item['requested_at'] = marker.stat().st_mtime
+        try:
+            record = json.loads(marker.read_text())
+            run = record['run_id']
+            if not re.fullmatch(r'web-cut-[a-f0-9]{32}', run):
+                return item
+            if record['job'] != job:
+                return item
+            directory = Path(self.config['records']) / run
+            if self.process is not None and self.kind == 'cut' and self.log_path == directory/'cut.log':
+                item['state'] = 'Running'
+                return item
+            try:
+                from meerk40t.camera.layer_batch import completed
+            except ImportError:
+                from layer_batch import completed
+            if job.get('pause_between_layers'):
+                batch = json.loads((directory/'layer-control'/'state.json').read_text())
+                count = job['passes']
+                verified = (batch.get('phase') == 'complete' and batch.get('completed') == count
+                            and batch.get('total') == count and all(completed(
+                                Path(self.config['data_dir']) / ('fill-' + run + '-p' + str(n) + '.jsonl'))
+                                for n in range(1, count+1)))
+            else:
+                verified = completed(Path(self.config['data_dir']) / ('fill-' + run + '.jsonl'))
+            if verified:
+                item['state'] = 'Completed'
+                item['repeatable'] = not bool(job.get('blocked_reason'))
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        return item
+
+    def history(self):
+        entries = [self.history_entry(k, v) for k, v in self.catalog().items()]
+        return sorted(entries, key=lambda e: e['requested_at'] or 0, reverse=True)
+
+    def prepare_repeat(self, request):
+        # Preparing a new approval never launches hardware or removes old markers.
+        if request.get('design_id') != self.design_id:
+            raise ValueError('Load the history design first')
+        if not self.config.get('designs_file') or self.draft is not None or self.upload is not None:
+            raise ValueError('A reviewed catalog design with unchanged settings is required')
+        job = self.config.get('cut_job')
+        if not job or request.get('confirm_job_sha256') != job['sha256']:
+            raise ValueError('Confirm the selected job')
+        if [self.dx, self.dy] != job['shift']:
+            raise ValueError('Placement changed; rebuild the cutting toolpath first')
+        path = Path(self.config['designs_file'])
+        catalog = json.loads(path.read_text())
+        design = catalog['designs'][self.design_id]
+        if design.get('cut_job') != job or not self.history_entry(self.design_id, design)['repeatable']:
+            raise ValueError('Previous run is incomplete or unverified; inspect its records before repeating')
+        if hashlib.sha256(Path(job['path']).read_bytes()).hexdigest() != job['sha256']:
+            raise ValueError('Prepared job hash changed')
+        key = 'repeat-' + uuid.uuid4().hex
+        new = copy.deepcopy(design)
+        new['repeat_of'] = self.design_id
+        new['initial_shift'] = [self.dx, self.dy]
+        new['cut_job']['approval_id'] = key
+        catalog['designs'][key] = new
+        temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
+        temporary.write_text(json.dumps(catalog, indent=2))
+        temporary.replace(path)
+        self.select_design(key)
+        self.message = 'New batch prepared with the same settings. Frame to check placement, then Start cutting.'
 
     def save_settings(self, values):
         limits = dict(speed_mm_s=(1,10000), interval_mm=(.005,5),
-                      uv_duty_percent=(0,100), frequency_khz=(10,150), passes=(1,20))
+                      uv_duty_percent=(0,100), frequency_khz=(10,150), passes=(1,100))
         if not isinstance(values, dict) or set(values) != set(limits):
             raise ValueError('Provide speed, interval, UV duty, frequency and passes')
         for name, (low,high) in limits.items():
@@ -190,7 +270,7 @@ class Station:
         self.control_dir = None
         if job.get('pause_between_layers'):
             passes = job.get('passes')
-            if isinstance(passes, bool) or not isinstance(passes, int) or not 1 <= passes <= 20:
+            if isinstance(passes, bool) or not isinstance(passes, int) or not 1 <= passes <= 100:
                 raise ValueError('Invalid prepared layer count')
             self.control_dir = directory / 'layer-control'
             command = [self.config['python'], '-u', str(Path(__file__).with_name('layer_batch.py')),
@@ -268,6 +348,8 @@ class Station:
                 self.save_settings(request.get('settings'))
             elif action == 'cut':
                 self.start_cut(request)
+            elif action == 'prepare_repeat':
+                self.prepare_repeat(request)
             elif action == 'nudge':
                 axis, amount = request.get('axis'), request.get('amount')
                 if axis not in ('x', 'y') or amount not in (-10, -1, -.1, .1, 1, 10):
@@ -314,7 +396,7 @@ class Station:
                     self.message = 'Framing - press Stop to finish'
             else:
                 raise ValueError('Unknown action')
-            if action in ('settings', 'select_design', 'nudge', 'upload_svg'):
+            if action in ('settings', 'select_design', 'nudge', 'upload_svg', 'prepare_repeat'):
                 self.persist_ui()
             return self.status()
 
@@ -350,6 +432,21 @@ class Handler(BaseHTTPRequestHandler):
             if route == '/':
                 page = Path(__file__).with_name('frame_web.html').read_text(encoding='utf-8')
                 self.reply(page.replace('__TOKEN__', self.server.token).encode(), 'text/html; charset=utf-8')
+            elif route == '/toolpath-player.js':
+                self.reply(Path(__file__).with_name('toolpath-player.js').read_bytes(), 'text/javascript; charset=utf-8')
+            elif route == '/toolpath':
+                try:
+                    from meerk40t.camera.toolpath_preview import preview
+                except ImportError:
+                    from toolpath_preview import preview
+                station = self.server.station
+                with station.guard:
+                    job = dict(station.config.get('cut_job') or {})
+                    data_dir = station.config['data_dir']
+                    pending_settings = bool(station.draft)
+                result = preview(job, data_dir)
+                result['settings_pending'] = pending_settings
+                self.reply(json.dumps(result).encode())
             elif route == '/progress':
                 try:
                     from meerk40t.camera.batch_progress import batch_progress, single_job_progress
@@ -360,7 +457,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not job:
                     self.reply(b'{"error":"No batch run"}', status=404)
                     return
-                log_path = station.log_path if station.kind == 'cut' else None
+                log_path = station.log_path if station.kind == 'cut' and station.process is not None else None
                 if log_path is None:
                     marker = station.cut_marker(job)
                     if not marker.exists():
@@ -380,6 +477,10 @@ class Handler(BaseHTTPRequestHandler):
             elif route == '/status':
                 with self.server.station.guard:
                     self.reply(json.dumps(self.server.station.status()).encode())
+            elif route == '/history':
+                with self.server.station.guard:
+                    self.server.station.status()
+                    self.reply(json.dumps(self.server.station.history()).encode())
             elif route == '/snapshot.jpg':
                 with urllib.request.urlopen('http://127.0.0.1:8080/snapshot.jpg', timeout=10) as response:
                     self.reply(response.read(12*1024*1024), 'image/jpeg')

@@ -108,3 +108,22 @@ test. A UI update does not authorize a test engraving.
 
 See [web implementation](frame-web.md), [camera alignment](camera-frame-alignment.md),
 [station controls](crs355-pi.md), and [friend quickstart](friend-quickstart.md).
+
+### Inspect the prepared path
+
+Use **Toolpath preview** below the camera to play the selected job's engraving
+and travel moves. Pause preview, Restart preview, speed, and the timeline only
+control the visualization; **Start cutting** is the separate machine control.
+The animation shows one pass, not live run progress. For actual completion use
+**Cut layers** and the preserved run records. A changed design refreshes the
+preview automatically; unsupported or unprepared jobs show an explanation.
+
+### Reuse a previous design from the page
+
+Open **History**, select the older design or batch, then **Load selected design**.
+Use **Frame** and the camera to check its saved placement. Stop framing before
+cutting. For a completed batch, **Prepare another batch** copies the same recipe
+and number of layers into a new run; **Start cutting** is a separate action.
+The previous results stay in History. Runs labeled **Needs review** require log
+inspection rather than an automatic retry. Ask Codex to rebuild a job if you want
+a different position or recipe; nudging the frame does not move a saved cut path.

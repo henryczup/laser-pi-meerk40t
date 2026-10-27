@@ -183,3 +183,54 @@ Starting the service does not run jobs, and preserved request markers prevent
 re-execution. Keep automatic service restart disabled while active-operation
 recovery is not implemented. The camera and Tailscale services are independently
 enabled at boot. Neither viewing nor deployment verifies optical marking.
+
+## Toolpath animation
+
+The camera page includes a read-only animation for the selected prepared `.lmc`
+job. Play/Pause preview, Restart preview, speed, and the timeline affect only the
+animation. They never POST a machine action. Orange shows marking strokes;
+blue shows the current non-marking travel. One pass is shown, with the configured
+pass count identified separately. The 200 mm field uses design coordinates;
+curved surfaces, focus, depth, and controller delays are not simulated.
+
+`GET /toolpath` verifies the command file against the selected job SHA256 and
+extracts moves in command order. It uses the private
+`data_dir/current-lightburn-JCZFiber.json` scale settings to invert the station
+coordinate transform. No calibration data or file paths are returned to the UI.
+A missing calibration, changed hash, unsupported manifest, or missing prepared
+job displays an unavailable message rather than another design's animation.
+Pending settings are labeled as the previous prepared path. Frame nudges do not
+move the saved cutting path; that job must be rebuilt before cutting.
+
+Reusable implementation: `meerk40t.camera.toolpath_preview.preview(job, data_dir)`
+and `meerk40t/camera/toolpath-player.js`. Deploy both files beside `frame_web.py`
+and `frame_web.html` while idle. The source image and job remain private. The
+player resets when the selected design/hash changes and never auto-plays.
+Tests: `python -m unittest test.test_toolpath_preview test.test_frame_web`.
+
+## History and repeat batches
+
+The History list contains saved framing designs and cutting batches, with request
+ times and completion state. Select an entry and choose **Load selected design**.
+Loading is read-only with respect to hardware; use **Frame** to project its saved
+outline and **Stop** to finish before cutting. Check placement on the current
+workpiece; an older position is not registration for a new board.
+
+For a completed run, **Prepare another batch** creates and selects a new catalog
+entry with a unique approval ID. It preserves the artwork, placement, speed,
+frequency, duty, spacing and pass count. It does not fire. Review the displayed
+summary and press **Start cutting** to execute the new batch. Original logs and
+requested markers remain intact; repeated or stale preparation requests cannot
+launch or duplicate a batch. Execution still revalidates the job offline.
+
+History completion requires preserved controller-completion and clean-cleanup
+records for every layer. Interrupted, missing or ambiguous records show **Needs
+review** and cannot be repeated through this control. Edited settings, changed
+placement, changed job hashes and blocked jobs also prevent repeat preparation.
+Older custom batch formats without verifiable per-layer records remain available
+for framing but require inspection and preparation through the station workflow.
+The history API exposes labels, summaries, settings and request times, not private
+machine paths or credentials. Loading another entry clears the previous progress
+context so the page reads the selected run's records.
+
+Offline tests: `python -m unittest test.test_frame_history test.test_frame_web test.test_web_job_controls`.

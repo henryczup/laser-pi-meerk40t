@@ -30,7 +30,7 @@ def write_state(directory, **state):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--child-runner', required=True)
-    parser.add_argument('--passes', type=int, choices=range(1, 21), required=True)
+    parser.add_argument('--passes', type=int, choices=range(1, 101), required=True)
     parser.add_argument('--control-dir', type=Path, required=True)
     options, args = parser.parse_known_args()
     command = [sys.executable, '-u', options.child_runner]
